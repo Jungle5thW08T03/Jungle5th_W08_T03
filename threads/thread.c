@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in SLEEP state*/
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -73,7 +76,6 @@ static tid_t allocate_tid (void);
  * somewhere in the middle, this locates the curent thread. */
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
-
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
@@ -105,10 +107,11 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the global thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -222,6 +225,39 @@ thread_block (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 	thread_current ()->status = THREAD_BLOCKED;
 	schedule ();
+	
+}
+
+list_less_func *less_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
+	struct thread *new_thread = list_entry(a, struct thread, elem);
+	struct thread *list_thread = list_entry(b, struct thread, elem);
+	if(new_thread->wake_tick < list_thread->wake_tick) return true;
+	else false;
+}
+
+void
+thread_sleep (int64_t waketick) {
+
+	enum intr_level old_level;
+	old_level = intr_disable ();
+	struct thread *curr_thread = thread_current();
+	ASSERT(curr_thread != idle_thread);
+
+	curr_thread->wake_tick = waketick;
+	struct list_elem t_elem = curr_thread->elem;
+	list_insert_ordered(&sleep_list, &t_elem, less_tick, &t_elem);
+	thread_block ();
+	intr_set_level(old_level);
+}
+
+void
+thread_awake (int64_t ticks) {
+	struct thread *cur_thread = list_entry(list_begin(&sleep_list), struct thread, elem);
+	while(cur_thread->wake_tick <= ticks) {
+		thread_unblock(cur_thread);
+		list_remove(list_begin(&sleep_list));
+		cur_thread = list_entry(list_begin(&sleep_list), struct thread, elem);
+	}
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -415,7 +451,7 @@ init_thread (struct thread *t, const char *name, int priority) {
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
-   idle_thread. */
+   idle_thread. */                    
 static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))

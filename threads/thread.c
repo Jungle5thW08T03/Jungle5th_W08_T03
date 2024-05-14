@@ -56,7 +56,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -227,43 +226,53 @@ thread_block (void) {
 	schedule ();
 }
 
-list_less_func *less_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
+list_less_func *less_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	struct thread *new_thread = list_entry(a, struct thread, elem);
 	struct thread *list_thread = list_entry(b, struct thread, elem);
 	if(new_thread->wake_tick < list_thread->wake_tick) return true;
-	else false;
+	else return false;
+}
+
+list_less_func *higher_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *new_thread = list_entry(a, struct thread, elem);
+	struct thread *list_thread = list_entry(b, struct thread, elem);
+	if(new_thread->priority > list_thread->priority) return true;
+	else return false;
 }
 
 void
 thread_sleep (int64_t waketick) {
 	enum intr_level old_level;
-	printf("entering thread_sleep...\n");
+	// printf("entering thread_sleep...\n");
 	old_level = intr_disable ();
 	struct thread *curr_thread = thread_current();
+	ASSERT(is_thread(curr_thread));
 	ASSERT(curr_thread != idle_thread);
 	curr_thread->wake_tick = waketick;
-	struct list_elem t_elem = curr_thread->elem;
-	list_insert_ordered(&sleep_list, &t_elem, less_tick, &t_elem);
-	thread_current ()->status = THREAD_BLOCKED;
-	schedule();
+	// printf("current thread's name is %s, priority is %d, it will wake up at %d tick\n", curr_thread->name, curr_thread->priority, curr_thread->wake_tick);
+	// printf("trying to put elem into sleep list while\n");
+	// printf("sleep list size is %d\n", list_size(&sleep_list));
+	// if (!list_empty(&sleep_list)) printf("head tick is %d\n", list_entry(list_front(&sleep_list), struct thread, elem)->wake_tick);
+	struct list_elem *t_elem = &curr_thread->elem;
+	list_insert_ordered(&sleep_list, t_elem, less_tick, t_elem);
+	// list_push_back(&sleep_list, t_elem);
+	thread_block();
 	intr_set_level(old_level);
-	ASSERT (intr_get_level () == INTR_ON);
-	ASSERT(curr_thread->status == THREAD_BLOCKED);
-	printf("now sleep list size is %d", list_size(&sleep_list));
 }
 
 void
 thread_awake (int64_t ticks) {
 	if (list_empty(&sleep_list)) return;
-	printf("sleep list size: %d\n", list_size(&sleep_list));
 	struct thread *cur_thread = list_entry(list_front(&sleep_list), struct thread, elem);
-	// printf("this thread's priority = %d\n", cur_thread->priority);
-	printf("waking up %s at %d tick\n", cur_thread->name, ticks);
 	ASSERT(cur_thread->status == THREAD_BLOCKED);
 	while(cur_thread->wake_tick <= ticks) {
+		// printf("sleep list size: %d\n", list_size(&sleep_list));
+		// printf("this thread's priority = %d\n", cur_thread->priority);
+		// printf("waking up %s at %d tick, which is %d\n", cur_thread->name, ticks, cur_thread->status);
+		list_pop_front(&sleep_list);
 		thread_unblock(cur_thread);
-		list_remove(list_begin(&sleep_list));
-		cur_thread = list_entry(list_begin(&sleep_list), struct thread, elem);
+		if (list_empty(&sleep_list)) break;
+		cur_thread = list_entry(list_front(&sleep_list), struct thread, elem);
 	}
 }
 
@@ -282,7 +291,7 @@ thread_unblock (struct thread *t) {
 	ASSERT (is_thread (t));
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, higher_priority, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }

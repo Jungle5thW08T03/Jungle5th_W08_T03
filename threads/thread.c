@@ -225,7 +225,6 @@ thread_block (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 	thread_current ()->status = THREAD_BLOCKED;
 	schedule ();
-	
 }
 
 list_less_func *less_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
@@ -237,22 +236,30 @@ list_less_func *less_tick(const struct list_elem *a, const struct list_elem *b, 
 
 void
 thread_sleep (int64_t waketick) {
-
 	enum intr_level old_level;
+	printf("entering thread_sleep...\n");
 	old_level = intr_disable ();
 	struct thread *curr_thread = thread_current();
 	ASSERT(curr_thread != idle_thread);
-
 	curr_thread->wake_tick = waketick;
 	struct list_elem t_elem = curr_thread->elem;
 	list_insert_ordered(&sleep_list, &t_elem, less_tick, &t_elem);
-	thread_block ();
+	thread_current ()->status = THREAD_BLOCKED;
+	schedule();
 	intr_set_level(old_level);
+	ASSERT (intr_get_level () == INTR_ON);
+	ASSERT(curr_thread->status == THREAD_BLOCKED);
+	printf("now sleep list size is %d", list_size(&sleep_list));
 }
 
 void
 thread_awake (int64_t ticks) {
-	struct thread *cur_thread = list_entry(list_begin(&sleep_list), struct thread, elem);
+	if (list_empty(&sleep_list)) return;
+	printf("sleep list size: %d\n", list_size(&sleep_list));
+	struct thread *cur_thread = list_entry(list_front(&sleep_list), struct thread, elem);
+	// printf("this thread's priority = %d\n", cur_thread->priority);
+	printf("waking up %s at %d tick\n", cur_thread->name, ticks);
+	ASSERT(cur_thread->status == THREAD_BLOCKED);
 	while(cur_thread->wake_tick <= ticks) {
 		thread_unblock(cur_thread);
 		list_remove(list_begin(&sleep_list));
@@ -273,7 +280,6 @@ thread_unblock (struct thread *t) {
 	enum intr_level old_level;
 
 	ASSERT (is_thread (t));
-
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_push_back (&ready_list, &t->elem);

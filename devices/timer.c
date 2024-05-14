@@ -93,8 +93,9 @@ timer_sleep (int64_t ticks) {
 	if (ticks <= 0 ) return;
 	int64_t start = timer_ticks ();
 	ASSERT (intr_get_level () == INTR_ON);
-
-	if (timer_elapsed (start) < ticks) thread_sleep(start + ticks);
+	printf("timer_sleep for %d ticks\n", ticks);
+	thread_sleep(start + ticks);
+	ASSERT (intr_get_level () == INTR_ON);
 	/*
 	while (timer_elapsed (start) < ticks)
 		thread_yield ();
@@ -130,6 +131,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	if (ticks %10 == 0) printf("timer tick: %d tick\n", ticks);
 	thread_awake(ticks);
 }
 

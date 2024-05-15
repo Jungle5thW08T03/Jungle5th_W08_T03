@@ -66,10 +66,12 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		printf("thread %d will be blocked from sema_down\n", thread_current()->tid);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, higher_priority, (void *) NULL);
 		thread_block ();
 	}
 	sema->value--;
+	// printf("semaV down");
 	intr_set_level (old_level);
 }
 
@@ -109,10 +111,14 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
+	sema->value++;
+
+	if (!list_empty (&sema->waiters)) {
+		int top_pri = list_entry(list_front(&sema->waiters), struct thread, elem)->priority;
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
-	sema->value++;
+		if (thread_current()->priority <= get_top_priority_in_ready_list()) thread_yield();
+	}
 	intr_set_level (old_level);
 }
 
@@ -187,9 +193,14 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-
+	if (lock->holder != NULL) {
+		if (lock->holder->priority < thread_current()->priority)
+			lock->holder->priority = thread_current()->priority;
+	}
 	sema_down (&lock->semaphore);
+	
 	lock->holder = thread_current ();
+	printf("thread %d acquired lock\n",lock->holder->tid);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -221,7 +232,7 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-
+	printf("\nlock releasing by thread %d\n", lock->holder->tid);
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -282,7 +293,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+	list_insert_ordered (&cond->waiters, &waiter.elem, higher_priority, (void *) NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);

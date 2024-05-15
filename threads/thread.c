@@ -642,3 +642,9 @@ allocate_tid (void) {
 
 	return tid;
 }
+
+int get_top_priority_in_ready_list (void) {
+	ASSERT(!list_empty(&ready_list));
+	list_sort(&ready_list, higher_priority, (void *) NULL);
+	return list_entry(list_front(&ready_list), struct thread, elem)->priority;
+}

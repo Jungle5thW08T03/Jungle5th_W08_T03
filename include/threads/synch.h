@@ -45,6 +45,8 @@ void cond_wait(struct condition *, struct lock *);		// lock을 놓아주고, con
 void cond_signal(struct condition *, struct lock *);	// cond를 기다리는 스레드가 있다면, 기다리는 스레드 중 하나 깨움 (이 함수 콜하기 전 꼭 lock 갖고 있기)
 void cond_broadcast(struct condition *, struct lock *); // cond를 기다리는 스레드가 있다면, 모든 스레드를 깨움 (이 함수 콜하기 전 꼭 lock 갖고 있기)
 
+bool compare_condition(struct list_elem *a, struct list_elem *b, void *aux);
+
 /* Optimization barrier.
  *
  * The compiler will not reorder operations across an

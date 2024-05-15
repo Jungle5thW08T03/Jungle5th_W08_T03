@@ -276,6 +276,7 @@ void thread_awake(int64_t ticks)
 		{
 			search = list_remove(search); // 해당 스레드 sleep_list에서 제거 //search
 			thread_unblock(ready_thread); // 스레드 unblock(상태도 변경해주고 ready_list에도 넣어줌)
+										  // running_compare_yield(); // 왜 깨우고 나서 ready에 새로 들어갈 때 compare하면 안 되는거지 왜??????
 		}
 		else
 		{

@@ -92,8 +92,11 @@ struct thread
 	enum thread_status status; /* Thread state. */
 	char name[16];			   /* Name (for debugging purposes). */
 	int priority;			   /* Priority. */
+	int priority_origin;		// 원래 priority
 	int64_t wakeup_tick;	   /* wakeup 할 시간 저장 */
 
+	struct list doner_list;
+	struct lock *wait_on_lock;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
@@ -133,7 +136,7 @@ tid_t thread_tid(void);
 const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
-void thread_compare_yield(struct thread *t);
+
 void thread_yield(void);
 void thread_sleep(int64_t wakeup_tick);
 void thread_wakeup(int64_t curr_tick);
@@ -148,6 +151,8 @@ int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
 
-static cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-
+list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+int get_top_priority_in_doner_list (void);
+void thread_compare_yield(struct thread *t);
+void to_origin_priority(struct thread *t);
 #endif /* threads/thread.h */

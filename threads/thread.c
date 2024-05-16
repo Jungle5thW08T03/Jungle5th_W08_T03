@@ -72,7 +72,6 @@ static tid_t allocate_tid(void);
 static int64_t get_min_tick();
 static int set_global_tick(int64_t tick);
 static bool wakeup_less(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -90,7 +89,12 @@ static uint64_t gdt[3] = {0,
 						  0x00af9a000000ffff,
 						  0x00cf92000000ffff};
 
-static cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+int get_top_priority_in_doner_list (void);
+// pirority를 되돌림
+void to_origin_priority(struct thread *t) {t->priority = t->priority_origin;}
+// ready list안에 더 높은 우선순위 있으면 양보
+void thread_carryon(void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -326,6 +330,15 @@ void thread_compare_yield(struct thread *t)
 		thread_yield();
 }
 
+void thread_carryon(void)
+{
+	if(!list_empty(&ready_list)) {
+		list_sort(&ready_list, cmp_priority, NULL);
+		if (thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+			{thread_yield();}
+	}
+}
+
 /**
  * @brief CPU를 다른 쓰레드에게 양보하는 함수
  *
@@ -419,11 +432,7 @@ void thread_set_priority(int new_priority)
 	 * NOTE: Reorder the ready_list
 	 * part: priority-insert-ordered
 	 */
-	if (!list_empty(&ready_list))
-	{
-		struct thread *t = list_entry(list_front(&ready_list), struct thread, elem);
-		thread_compare_yield(t);
-	}
+	thread_carryon();
 }
 
 /* Returns the current thread's priority. */
@@ -523,7 +532,10 @@ init_thread(struct thread *t, const char *name, int priority)
 	strlcpy(t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t)t + PGSIZE - sizeof(void *);
 	t->priority = priority;
+	t->priority_origin = priority;
 	t->magic = THREAD_MAGIC;
+	t->wait_on_lock = NULL;
+	list_init(&t->doner_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -748,7 +760,7 @@ static bool wakeup_less(const struct list_elem *a_, const struct list_elem *b_, 
 /* NOTE: priority-insert-ordered
 - priority 비교 함수 구현
 */
-static cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
 {
 	const struct thread *a = list_entry(a_, struct thread, elem);
 	const struct thread *b = list_entry(b_, struct thread, elem);

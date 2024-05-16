@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+void donation_refresh(struct thread *t);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -62,7 +64,6 @@ void sema_down(struct semaphore *sema)
 
 	ASSERT(sema != NULL);
 	ASSERT(!intr_context());
-
 	old_level = intr_disable();
 	while (sema->value == 0)
 	{
@@ -109,9 +110,9 @@ void sema_up(struct semaphore *sema)
 	ASSERT(sema != NULL);
 
 	old_level = intr_disable();
-	if (!list_empty(&sema->waiters))
-		thread_unblock(list_entry(list_pop_front(&sema->waiters),
-								  struct thread, elem));
+	if (!list_empty(&sema->waiters)) {
+		thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
+	}
 	sema->value++;
 	intr_set_level(old_level);
 }
@@ -188,9 +189,13 @@ void lock_acquire(struct lock *lock)
 	ASSERT(lock != NULL);
 	ASSERT(!intr_context());
 	ASSERT(!lock_held_by_current_thread(lock));
-
+	// printf("acquiring lock\n");
+	thread_current()->wait_on_lock = lock;
+	// donation_refresh(thread_current());
 	sema_down(&lock->semaphore);
+	// printf("lock acquired\n");
 	lock->holder = thread_current();
+	thread_current()->wait_on_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -222,9 +227,13 @@ void lock_release(struct lock *lock)
 {
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
-
 	lock->holder = NULL;
 	sema_up(&lock->semaphore);
+	if (!list_empty(&thread_current()->doner_list)){
+
+		donation_refresh(thread_current());
+	}
+	thread_carryon();
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -284,7 +293,7 @@ void cond_wait(struct condition *cond, struct lock *lock)
 	ASSERT(lock_held_by_current_thread(lock));
 
 	sema_init(&waiter.semaphore, 0);
-	list_push_back(&cond->waiters, &waiter.elem);
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_priority, (void *) NULL);
 	lock_release(lock);
 	sema_down(&waiter.semaphore);
 	lock_acquire(lock);
@@ -308,6 +317,7 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
 		sema_up(&list_entry(list_pop_front(&cond->waiters),
 							struct semaphore_elem, elem)
 					 ->semaphore);
+	thread_carryon();
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -324,3 +334,27 @@ void cond_broadcast(struct condition *cond, struct lock *lock)
 	while (!list_empty(&cond->waiters))
 		cond_signal(cond, lock);
 }
+
+void donation_refresh(struct thread *t) {
+	return;
+}
+/*
+void donation_refresh(struct thread *t)
+{
+	if(!list_empty(&t->doner_list)) {
+		list_sort(&t->doner_list, cmp_priority, (void *) NULL);
+		int pmax;
+		if ((pmax = list_entry(list_front(&t->doner_list), struct thread, elem)->priority) > t->priority) 
+			{t->priority = pmax;}
+	}
+	else {
+		to_origin_priority(t);
+	}
+	if (t->wait_on_lock != NULL) {
+		if (t->wait_on_lock->holder != NULL) {
+			list_insert_ordered(&t->wait_on_lock->holder->doner_list, &t->elem, cmp_priority, NULL);
+			donation_refresh(t->wait_on_lock->holder);
+		}
+	}
+}
+*/

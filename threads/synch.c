@@ -216,14 +216,12 @@ void lock_acquire(struct lock *lock)
 
 void donate_priority (void)
 {
-  int depth;
   struct thread *cur = thread_current ();
 
-  for (depth = 0; depth < 8; depth++){
-    if (!cur->wait_on_lock) break;
-      struct thread *holder = cur->wait_on_lock->holder;
-      holder->priority = cur->priority;
-      cur = holder;
+  while (cur->wait_on_lock != NULL){
+	struct thread *holder = cur->wait_on_lock->holder;
+	holder->priority = cur->priority;
+	cur = holder;
   }
 }
 

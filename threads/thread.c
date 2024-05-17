@@ -90,7 +90,8 @@ static uint64_t gdt[3] = {0,
 						  0x00cf92000000ffff};
 
 list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-int get_top_priority_in_doner_list (void);
+list_less_func *cmp_lock_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
 // pirority를 되돌림
 void to_origin_priority(struct thread *t) {t->priority = t->priority_origin;}
 // ready list안에 더 높은 우선순위 있으면 양보
@@ -324,21 +325,6 @@ void thread_exit(void)
 	NOT_REACHED();
 }
 
-void thread_compare_yield(struct thread *t)
-{
-	if (thread_current()->priority < t->priority)
-		thread_yield();
-}
-
-void thread_carryon(void)
-{
-	if(!list_empty(&ready_list)) {
-		list_sort(&ready_list, cmp_priority, NULL);
-		if (thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
-			{thread_yield();}
-	}
-}
-
 /**
  * @brief CPU를 다른 쓰레드에게 양보하는 함수
  *
@@ -426,8 +412,8 @@ void thread_wakeup(int64_t curr_tick)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-	thread_current()->priority = new_priority;
-
+	thread_current()->priority_origin = new_priority;
+	donation_refresh(thread_current());
 	/**
 	 * NOTE: Reorder the ready_list
 	 * part: priority-insert-ordered
@@ -535,7 +521,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority_origin = priority;
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL;
-	list_init(&t->doner_list);
+	list_init(&t->acquired_lock_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -766,4 +752,27 @@ list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem 
 	const struct thread *b = list_entry(b_, struct thread, elem);
 
 	return a->priority > b->priority;
+}
+
+list_less_func *cmp_lock_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED)
+{
+	const struct lock *a = list_entry(a_, struct lock, elem);
+	const struct lock *b = list_entry(b_, struct lock, elem);
+
+	return a->priority > b->priority;
+}
+
+void thread_compare_yield(struct thread *t)
+{
+	if (thread_current()->priority < t->priority)
+		thread_yield();
+}
+
+void thread_carryon(void)
+{
+	if(!list_empty(&ready_list)) {
+		list_sort(&ready_list, cmp_priority, NULL);
+		if (thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+			{thread_yield();}
+	}
 }

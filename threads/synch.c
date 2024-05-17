@@ -33,6 +33,7 @@
 #include "threads/thread.h"
 
 void donation_refresh(struct thread *t);
+void lock_priority_refresh(struct lock *lock);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -173,6 +174,7 @@ void lock_init(struct lock *lock)
 	ASSERT(lock != NULL);
 
 	lock->holder = NULL;
+	lock->priority = 1;
 	sema_init(&lock->semaphore, 1);
 }
 
@@ -191,10 +193,11 @@ void lock_acquire(struct lock *lock)
 	ASSERT(!lock_held_by_current_thread(lock));
 	// printf("acquiring lock\n");
 	thread_current()->wait_on_lock = lock;
-	// donation_refresh(thread_current());
+	donation_refresh(thread_current());
 	sema_down(&lock->semaphore);
 	// printf("lock acquired\n");
 	lock->holder = thread_current();
+	list_push_back(&thread_current()->acquired_lock_list, &lock->elem);
 	thread_current()->wait_on_lock = NULL;
 }
 
@@ -228,11 +231,14 @@ void lock_release(struct lock *lock)
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
 	lock->holder = NULL;
-	sema_up(&lock->semaphore);
-	if (!list_empty(&thread_current()->doner_list)){
-
-		donation_refresh(thread_current());
+	ASSERT(!list_empty(&thread_current()->acquired_lock_list));
+	struct list_elem *lelem = list_front(&thread_current()->acquired_lock_list);
+	while(lelem->next != NULL) {
+		struct lock * curr_lock = list_entry(lelem, struct lock, elem);
+		if (curr_lock == lock) lelem = list_remove(lelem);
+		else lelem = lelem->next;
 	}
+	sema_up(&lock->semaphore);
 	thread_carryon();
 }
 
@@ -306,7 +312,7 @@ void cond_wait(struct condition *cond, struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to signal a condition variable within an
    interrupt handler. */
-void cond_signal(struct condition *cond, struct lock *lock UNUSED)
+void cond_signal(struct condition *cond, struct lock *lock)
 {
 	ASSERT(cond != NULL);
 	ASSERT(lock != NULL);
@@ -335,26 +341,31 @@ void cond_broadcast(struct condition *cond, struct lock *lock)
 		cond_signal(cond, lock);
 }
 
-void donation_refresh(struct thread *t) {
-	return;
-}
-/*
+// void donation_refresh(struct thread *t) {
+// 	return;
+// }
+
 void donation_refresh(struct thread *t)
 {
-	if(!list_empty(&t->doner_list)) {
-		list_sort(&t->doner_list, cmp_priority, (void *) NULL);
-		int pmax;
-		if ((pmax = list_entry(list_front(&t->doner_list), struct thread, elem)->priority) > t->priority) 
-			{t->priority = pmax;}
+	// 스레드의 priority를 가능한 최대 priority로
+	to_origin_priority(t);
+	if(!list_empty(&t->acquired_lock_list)) {
+		int maxp = list_entry(list_max(&t->acquired_lock_list, cmp_lock_priority, NULL), struct lock, elem)->priority;
+		if (maxp > t->priority) t->priority = maxp;
 	}
-	else {
-		to_origin_priority(t);
-	}
+
+	// 내가 기다리는 락의 priority를 최신화해주고 해당 락의 주인에게 priority 최신화 요청
 	if (t->wait_on_lock != NULL) {
-		if (t->wait_on_lock->holder != NULL) {
-			list_insert_ordered(&t->wait_on_lock->holder->doner_list, &t->elem, cmp_priority, NULL);
-			donation_refresh(t->wait_on_lock->holder);
-		}
+		if(t->wait_on_lock->holder == NULL) return;
+		lock_priority_refresh(t->wait_on_lock);
+		donation_refresh(t->wait_on_lock->holder);
 	}
 }
-*/
+
+// 락의 최대 priority 최신화
+void lock_priority_refresh(struct lock *lock) {
+	if(list_empty(&lock->semaphore.waiters)) return;
+	list_sort(&lock->semaphore.waiters, cmp_priority, NULL);
+	int maxp = list_entry(list_front(&lock->semaphore.waiters), struct thread, elem)->priority;
+	if (lock->priority < maxp) lock->priority = maxp;
+}

@@ -95,7 +95,7 @@ struct thread
 	int priority_origin;		// 원래 priority
 	int64_t wakeup_tick;	   /* wakeup 할 시간 저장 */
 
-	struct list doner_list;
+	struct list acquired_lock_list;
 	struct lock *wait_on_lock;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
@@ -152,7 +152,8 @@ int thread_get_load_avg(void);
 void do_iret(struct intr_frame *tf);
 
 list_less_func *cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-int get_top_priority_in_doner_list (void);
+list_less_func *cmp_lock_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
+
 void thread_compare_yield(struct thread *t);
 void to_origin_priority(struct thread *t);
 #endif /* threads/thread.h */

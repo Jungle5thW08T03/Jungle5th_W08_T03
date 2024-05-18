@@ -21,6 +21,7 @@ enum thread_status
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
+typedef int fxp;
 #define TID_ERROR ((tid_t) - 1) /* Error value for tid_t. */
 
 /* Thread priorities. */
@@ -97,7 +98,9 @@ struct thread
 	struct list_elem donation_elem;
 	int origin_priority;
 	struct lock *wait_on_lock;
-
+	int nice;
+	fxp recent_cpu;
+	struct list_elem living_elem;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
@@ -123,7 +126,7 @@ extern bool thread_mlfqs;
 void thread_init(void);
 void thread_start(void);
 
-void thread_tick(void);
+void thread_tick(int ticks);
 void thread_print_stats(void);
 
 typedef void thread_func(void *aux);
@@ -154,5 +157,9 @@ int thread_get_load_avg(void);
 
 bool compare_priority(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
 void do_iret(struct intr_frame *tf);
+int update_all_priority(void);
+int get_ready_threads(void);
+void update_all_recent(void);
+void update_load_avg(void);
 
 #endif /* threads/thread.h */

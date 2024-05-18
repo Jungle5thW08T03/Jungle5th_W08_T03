@@ -147,8 +147,7 @@ static void
 timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
-	thread_tick();
-
+	thread_tick(ticks);
 	thread_wakeup(ticks); /* 지정된 틱 시간에 깨어날 스레드를 깨우는 함수 호출 */
 }
 

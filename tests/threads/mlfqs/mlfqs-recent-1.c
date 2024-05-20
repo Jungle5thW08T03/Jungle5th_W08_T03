@@ -130,7 +130,9 @@ test_mlfqs_recent_1 (void)
       if (elapsed % (TIMER_FREQ * 2) == 0 && elapsed > last_elapsed) 
         {
           int recent_cpu = thread_get_recent_cpu ();
+          printf("-------------------------RECENT_CPU: %d---------------------------\n", recent_cpu);
           int load_avg = thread_get_load_avg ();
+          printf("-------------------------LOAD_AVG: %d---------------------------\n", recent_cpu);
           int elapsed_seconds = elapsed / TIMER_FREQ;
           msg ("After %d seconds, recent_cpu is %d.%02d, load_avg is %d.%02d.",
                elapsed_seconds,

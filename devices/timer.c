@@ -109,7 +109,21 @@ timer_elapsed(int64_t then)
 void timer_sleep(int64_t ticks)
 {
 	ASSERT(intr_get_level() == INTR_ON); /* 인터럽트가 켜져 있지 않으면 assert */
-	thread_sleep(timer_ticks() + ticks); /* 현재 쓰레드를 일정 tick만큼 sleep 시키는 함수 호출 */
+
+	int64_t start = timer_ticks();
+
+	// 여기서 생각해 볼 문제점
+	// : 위에 start 선언과 아래 if문 사이에서
+	// context switching이 발생해서 if문이 무효화가 될 수 있음
+	// 이번 프로젝트 채점하지 않지만 -> 좋은 프로그래머가 되기 위해 고민해보기
+
+	if (timer_elapsed(start) < ticks)
+	{
+		// ticks에 음수 값이나 0같은 쓸모없는 값이 들어오는 거 걸러준다고 생각
+		// if문 안 걸면 alarm-zero & alarm-negative에서 idle이 1이 나오고
+		// if문 걸면 alarm-zero & alarm-negative에서 idle이 0이 나옴
+		thread_sleep(start + ticks); /* 현재 쓰레드를 일정 tick만큼 sleep 시키는 함수 호출 */
+	}
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -148,8 +162,24 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
 	ticks++;
 	thread_tick();
+	if (thread_mlfqs)
+	{
+		mlfqs_increase_recent_cpu();
+		if (ticks % 4 == 0)
+		{
+			mlfqs_recalculate_priority();
+			if (timer_ticks() % TIMER_FREQ == 0) /* ticks % 100 == 0*/
+			{
+				mlfqs_calculate_load_avg();
+				mlfqs_recalculate_recent_cpu();
+			}
+		}
+	}
 
-	thread_wakeup(ticks); /* 지정된 틱 시간에 깨어날 스레드를 깨우는 함수 호출 */
+	if (get_min_tick() <= ticks)
+	{
+		thread_wakeup(ticks); /* 지정된 틱 시간에 깨어날 스레드를 깨우는 함수 호출 */
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -197,7 +197,7 @@ process_exec (void *f_name) {
 	// *(parse+count*sizeof(char *)) = NULL;
 	strtok_r(NULL, " ", &saveptr);
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 	free(parse);
 
 	/* If load failed, quit. */
@@ -238,7 +238,7 @@ static void argument_stack(char **parse, int count, void **rsp)
 	{
 		*rsp = *rsp - sizeof(char *);
 		*(char **)(*rsp) = address[i];
-		printf("%p\n", address[i]);
+		// printf("%p\n", address[i]);
 	}
 
 	/* fake addreass(0) */
@@ -260,10 +260,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (true)
-	{
-		/* code */
-	}
+	int a = 0;
+	while (a < 1000000000) a++;
 	
 	return -1;
 }

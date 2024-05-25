@@ -11,6 +11,9 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
+bool valid_addr (void *ptr);
+void exit(int status);
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -50,8 +53,16 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	
 	case SYS_EXIT:
+		// MYTODO: Implement exit case
+		exit(f->R.rdi);
+		break;
 
-
+	case SYS_EXEC:
+		char *file_name = f->R.rdi;
+		if (!valid_addr(file_name)) exit(-1);
+		f->R.rax = exec(file_name);
+		break;
+	
 
 	default:
 		break;
@@ -60,3 +71,29 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	printf ("system call!\n");
 	thread_exit ();
 }
+
+bool valid_addr (void *ptr)
+{
+	if (ptr == NULL) {
+		exit(-1);
+		return false;
+	}
+
+	if (!is_user_vaddr(ptr)) {
+		exit(-1);
+		return false;
+	}
+
+	return true;
+}
+
+uint64_t exit(status)
+{
+	struct thread *cur = thread_current();
+
+	printf("%s: exit(%d)\n", cur->name, status);
+	thread_exit();
+	return 0;
+}
+
+void exec(file_name)

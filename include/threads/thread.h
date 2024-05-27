@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/fixed_point.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -28,6 +29,9 @@ typedef int tid_t;
 #define PRI_MIN 0	   /* Lowest priority. */
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63	   /* Highest priority. */
+
+#define FDT_PAGES 3
+#define FDTCOUNT_LIMIT FDT_PAGES * (1 << 9)
 
 /* A kernel thread or user process.
  *
@@ -110,9 +114,25 @@ struct thread
 	/* NOTE: [Improve] all_list element */
 	struct list_elem all_elem;
 
+	/* Project(2) Process hierarchy */
+	//struct thread parent_t;	/* 부모 프로세스 */
+	struct list child_list; /* 자식 프로세스 list */
+	struct list_elem child_elem;
+
+	struct semaphore exit_sema;
+	struct semaphore load_sema;
+	struct semaphore wait_sema;
+
+	struct file *running_file; /* 실행 중인 파일 */
+
+	int exit_status; /* 프로세스 종료 유무 */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
-	uint64_t *pml4; /* Page map level 4 */
+	uint64_t *pml4;	   /* Page map level 4 */
+	struct file **fdt; /* 파일 디스크립터 테이블 */
+	int next_fd;	   /* 파일 디스크립터 index */
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

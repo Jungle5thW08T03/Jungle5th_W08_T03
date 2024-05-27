@@ -12,6 +12,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/fixed_point.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -226,8 +227,26 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
-	// list_push_back(&all_list, &t->all_elem);
+	/* Project(2) Process hierarchy */
+	//t->parent_t = thread_current();
+
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->load_sema, 0);
+	sema_init(&t->wait_sema, 0);
+
+	/* 파일 디스크립터 테이블 메모리 할당 */
+	t->fdt = palloc_get_multiple(0, 3);
+	if (t->fdt == NULL)
+	{
+		return TID_ERROR;
+	}
+
+	t->next_fd = 2;
+	t->fdt[0] = 1; /* STDIN_FILENO: 표준 입력 */
+	t->fdt[1] = 2; /* STDOUT_FILENO: 표준 출력 */
+
+	/* 현재 실행 중인 스레드의 자식 리스트에 추가 */
+	list_push_back(&thread_current()->child_list, &t->child_elem);
 
 	/* Add to run queue. */
 	thread_unblock(t);
@@ -599,6 +618,11 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
 	list_push_back(&all_list, &t->all_elem);
+
+	/* Project(2) process hierarchy */
+	list_init(&t->child_list);
+
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

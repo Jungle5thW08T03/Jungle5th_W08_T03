@@ -29,6 +29,8 @@ static void __do_fork (void *);
 
 static void argument_stack(char **parse, int count, void **rsp);
 
+static struct thread *get_t_from_tid(tid_t tid);
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -80,8 +82,14 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *cur = thread_current();
+	memcpy(&cur->tf, if_, sizeof(struct intr_frame));
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, cur);
+	if (tid == TID_ERROR) return TID_ERROR;
+	struct thread *child = get_t_from_tid(tid);
+	sema_down(&child->fork_sema);
+
+	return tid;
 }
 
 #ifndef VM
@@ -127,11 +135,12 @@ __do_fork (void *aux) {
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
+	parent_if = &parent->tf;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-
+	if_.R.rax = 0;
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
@@ -155,11 +164,14 @@ __do_fork (void *aux) {
 
 	process_init ();
 
+	sema_up(&current->fork_sema);
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	// thread_exit ();
+	sema_up(&current->fork_sema);
+	exit(TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
@@ -256,10 +268,11 @@ static void argument_stack(char **parse, int count, void **rsp)
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	
 	int a = 0;
 	while (a < 1000000000) a++;
 	
@@ -697,3 +710,16 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+
+static struct thread *get_t_from_tid(tid_t tid) {
+	struct thread *cur = thread_current();
+	struct list *childlist = &cur->child_list;
+	struct list_elem *child;
+
+	for (child = list_begin(childlist); child != list_end(childlist); child = list_next(child)) {
+		struct thread *t = list_entry(child, struct thread, child_list_elem);
+		if (t->tid == tid) return t;
+	}
+	return NULL;
+}

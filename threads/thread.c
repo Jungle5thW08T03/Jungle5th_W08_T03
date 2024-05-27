@@ -229,6 +229,9 @@ tid_t thread_create(const char *name, int priority,
 	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
 	// list_push_back(&all_list, &t->all_elem);
 
+	/* 부모의 자식스레드 리스트에 추가 */
+	list_push_back(&thread_current()->child_list, &t->child_list_elem);
+
 	/* Add to run queue. */
 	thread_unblock(t);
 
@@ -599,6 +602,16 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
 	list_push_back(&all_list, &t->all_elem);
+
+	// exit status init to
+	t->exit_status = 0;
+
+	list_init(&t->child_list);
+
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

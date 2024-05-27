@@ -7,12 +7,18 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "userprog/process.h"
+#include "filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
-bool valid_addr (void *ptr);
-void exit(int status);
+bool check_address (void *ptr);
+void exit (int status);
+tid_t fork (const char *thread_name, struct intr_frame *f);
+tid_t exec (const char *cmd_line);
+bool create (const char *file, uint64_t initial_size);
+bool remove (const char *file);
 
 /* System call.
  *
@@ -53,16 +59,30 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	
 	case SYS_EXIT:
-		// MYTODO: Implement exit case
 		exit(f->R.rdi);
 		break;
 
-	case SYS_EXEC:
-		char *file_name = f->R.rdi;
-		if (!valid_addr(file_name)) exit(-1);
-		f->R.rax = exec(file_name);
+	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
 		break;
 	
+	case SYS_EXEC:
+		char *file_name = f->R.rdi;
+		if (!check_address(file_name)) exit(-1);
+		f->R.rax = exec(file_name);
+		break;
+
+	case SYS_WAIT:
+		f->R.rax = process_wait (f->R.rdi);
+		break;
+
+	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
+		break;
+
+	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
+		break;
 
 	default:
 		break;
@@ -72,14 +92,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	thread_exit ();
 }
 
-bool valid_addr (void *ptr)
+bool check_address (void *addr)
 {
-	if (ptr == NULL) {
+	if (addr == NULL) {
 		exit(-1);
 		return false;
 	}
 
-	if (!is_user_vaddr(ptr)) {
+	if (!is_user_vaddr(addr)) {
 		exit(-1);
 		return false;
 	}
@@ -87,13 +107,35 @@ bool valid_addr (void *ptr)
 	return true;
 }
 
-uint64_t exit(status)
+void exit(status)
 {
 	struct thread *cur = thread_current();
-
+	cur->exit_status = status;
 	printf("%s: exit(%d)\n", cur->name, status);
 	thread_exit();
 	return 0;
 }
 
-void exec(file_name)
+tid_t fork (const char *thread_name, struct intr_frame *f)
+{
+	return process_fork(thread_name, f);
+}
+
+tid_t exec (const char *cmd_line)
+{
+	check_address(cmd_line);
+	process_exec(cmd_line);
+	
+}
+
+bool create (const char *file, uint64_t initial_size)
+{
+	check_address(file);
+	return filesys_create(file, initial_size);
+}
+
+bool remove (const char *file)
+{
+	check_address(file);
+	return filesys_remove(file);
+}

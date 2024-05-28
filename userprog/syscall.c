@@ -8,14 +8,13 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
-#include "filesys.h"
-#include "file.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
 bool check_address (void *ptr);
-void exit (int status);
 tid_t fork (const char *thread_name, struct intr_frame *f);
 tid_t exec (const char *cmd_line);
 bool create (const char *file, uint64_t initial_size);
@@ -82,9 +81,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	
 	case SYS_EXEC:
-		char *file_name = f->R.rdi;
-		if (!check_address(file_name)) exit(-1);
-		f->R.rax = exec(file_name);
+		f->R.rax = exec(f->R.rdi);
 		break;
 
 	case SYS_WAIT:
@@ -92,6 +89,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 
 	case SYS_CREATE:
+		// printf("create %s\n", f->R.rdi);
 		f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
 
@@ -100,6 +98,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 
 	case SYS_OPEN:
+		// printf("open %s\n", f->R.rdi);
 		f->R.rax = open(f->R.rdi);
 		break;
 
@@ -113,14 +112,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	case SYS_WRITE:
 		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+		// printf("fd is %d\n", f->R.rdi);
+		// printf("buffer: %s\n", f->R.rsi);
+		// printf("size is %d", f->R.rdx);
 		break;
 
 	default:
 		break;
 	}
 	
-	printf ("system call!\n");
-	thread_exit ();
+	// printf ("system call!\n");
+	// thread_exit ();
 }
 
 bool check_address (void *addr)
@@ -130,7 +132,8 @@ bool check_address (void *addr)
 		return false;
 	}
 
-	if (!is_user_vaddr(addr)) {
+	if (is_kernel_vaddr(addr)) {
+		// printf("invalid address!!!!!\n");
 		exit(-1);
 		return false;
 	}
@@ -142,7 +145,7 @@ void exit(status)
 {
 	struct thread *cur = thread_current();
 	cur->exit_status = status;
-	printf("%s: exit(%d)\n", cur->name, status);
+	printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 	thread_exit();
 	return 0;
 }
@@ -161,7 +164,8 @@ tid_t exec (const char *cmd_line)
 
 bool create (const char *file, uint64_t initial_size)
 {
-	check_address(file);
+	int valid = check_address(file);
+	// printf("valid address %d\n", valid);
 	return filesys_create(file, initial_size);
 }
 

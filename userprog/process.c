@@ -205,7 +205,8 @@ process_exec (void *f_name) {
 	}
 
 	argument_stack(parse, count, &_if.rsp);
-
+	_if.R.rdi = count;
+	_if.R.rsi = _if.rsp + 8;
 	// *(parse+count*sizeof(char *)) = NULL;
 	strtok_r(NULL, " ", &saveptr);
 
@@ -287,7 +288,6 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
 	process_cleanup ();
 }
 

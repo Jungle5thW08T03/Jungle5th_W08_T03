@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "filesys.h"
+#include "file.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -19,6 +20,16 @@ tid_t fork (const char *thread_name, struct intr_frame *f);
 tid_t exec (const char *cmd_line);
 bool create (const char *file, uint64_t initial_size);
 bool remove (const char *file);
+int open (const char *file);
+int filesize (int fd);
+off_t read (int fd, void *buffer, unsigned size);
+off_t write (int fd, const void *buffer, unsigned size);
+
+
+
+int set_fd(struct file *file);
+struct file *get_file(int fd);
+void close_file(int fd);
 
 /* System call.
  *
@@ -33,6 +44,8 @@ bool remove (const char *file);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+struct lock filesys_lock;
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -44,6 +57,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -82,6 +97,22 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	case SYS_REMOVE:
 		f->R.rax = remove(f->R.rdi);
+		break;
+
+	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
+		break;
+
+	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
+		break;
+
+	case SYS_READ:
+		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+
+	case SYS_WRITE:
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 
 	default:
@@ -137,5 +168,108 @@ bool create (const char *file, uint64_t initial_size)
 bool remove (const char *file)
 {
 	check_address(file);
-	return filesys_remove(file);
+	lock_acquire(&filesys_lock);
+	bool succ = filesys_remove(file);
+	lock_release(&filesys_lock);
+	return succ;
+}
+
+int open (const char *file)
+{
+	check_address(file);
+	lock_acquire(&filesys_lock);
+	struct file *f_open = NULL;
+	f_open = filesys_open(file);
+	if (f_open ==NULL) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
+	int fd = set_fd(f_open);
+	if (fd == -1) {
+		file_close(f_open);
+	}
+
+	lock_release(&filesys_lock);
+	return fd;
+}
+
+int filesize (int fd)
+{
+	struct file *file = get_file(fd);
+	if (file == NULL) return -1;
+	return file_length(file);
+}
+
+off_t read(int fd, void *buffer, unsigned size)
+{
+	check_address(buffer);
+	int readbytes = -1;
+	char *buf = buffer;
+	lock_acquire(&filesys_lock);
+	struct file *file = get_file(fd);
+	if (fd == 0) {
+		readbytes = 0;
+		while (readbytes <= size) {
+			*buf = input_getc();
+			buf++;
+			readbytes++;
+		}
+	}
+	else if ((1 < fd <= FD_MAX) && file) {
+		readbytes = file_read(file, buffer, size);
+	}
+
+	lock_release(&filesys_lock);
+	return readbytes;
+}
+
+off_t write (int fd, const void *buffer, unsigned size)
+{
+	check_address(buffer);
+	int writtenbytes = -1;
+	lock_acquire(&filesys_lock);
+	struct file *file = get_file(fd);
+	if (fd == 1) {
+		putbuf(buffer, size);
+		writtenbytes = size;
+	}
+	else if ((1 < fd <= FD_MAX) && file)
+	{
+		writtenbytes = file_write(file, buffer, size);
+	}
+	
+	lock_release(&filesys_lock);
+	return writtenbytes;
+}
+
+
+// fd 인덱스 부여
+int set_fd(struct file *file)
+{
+	struct thread *cur = thread_current();
+	struct file **fdt = cur->fdt;
+	int fd = 2;
+	while (fdt[fd] != NULL) 
+	{
+		if (fd == FD_MAX) return -1;
+		fd += 1;
+	}
+	fdt[fd] = file;
+	return fd;
+}
+
+struct file *get_file(int fd)
+{
+	if (fd < 2 || fd > FD_MAX) return NULL;
+	struct file *file = NULL;
+	struct thread *cur = thread_current();
+	file = cur->fdt[fd];
+	return file;
+}
+
+void close_file(int fd)
+{
+	if (fd < 2 || fd > FD_MAX) return NULL;
+	struct thread *cur = thread_current();
+	cur->fdt[fd] = NULL;
 }

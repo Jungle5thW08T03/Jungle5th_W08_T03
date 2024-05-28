@@ -29,6 +29,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63	   /* Highest priority. */
 
+#define FDT_PAGES 64
+#define FDTCOUNT_LIMIT FDT_PAGES * (1<<9)
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -110,9 +113,15 @@ struct thread
 	/* NOTE: [Improve] all_list element */
 	struct list_elem all_elem;
 
+	/* Project(2) */
+	int exit_status;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
+	struct file **fdt;
+	int next_fd;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

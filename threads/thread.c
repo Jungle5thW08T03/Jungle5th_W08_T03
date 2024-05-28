@@ -226,8 +226,16 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
-	// list_push_back(&all_list, &t->all_elem);
+	/* 파일 디스크립터 테이블 메모리 할당 */
+	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->fdt == NULL)
+	{
+		return TID_ERROR;
+	}
+
+	t->next_fd = 2;
+	t->fdt[0] = 1; /* STDIN_FILENO: 표준 입력 */
+	t->fdt[1] = 2; /* STDOUT_FILENO: 표준 출력 */
 
 	/* Add to run queue. */
 	thread_unblock(t);
@@ -599,6 +607,8 @@ init_thread(struct thread *t, const char *name, int priority)
 
 	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
 	list_push_back(&all_list, &t->all_elem);
+
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

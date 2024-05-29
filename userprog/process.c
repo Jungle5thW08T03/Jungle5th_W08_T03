@@ -83,11 +83,12 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
 	struct thread *cur = thread_current();
-	memcpy(&cur->tf, if_, sizeof(struct intr_frame));
+	memcpy(&cur->dif, if_, sizeof(struct intr_frame));
 	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, cur);
 	if (tid == TID_ERROR) return TID_ERROR;
 	struct thread *child = get_t_from_tid(tid);
 	sema_down(&child->fork_sema);
+
 
 	return tid;
 }
@@ -104,21 +105,23 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	if (is_kernel_vaddr(va)) return true;
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
-
+	if (parent_page == NULL) return false;
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -135,7 +138,7 @@ __do_fork (void *aux) {
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
-	parent_if = &parent->tf;
+	parent_if = &parent->dif;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
@@ -162,7 +165,10 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	process_init ();
+	for (int fd = 2; fd < FD_MAX; fd++) {
+		if (parent->fdt[fd]) current->fdt[fd] = file_duplicate(parent->fdt[fd]);
+	}
+	process_init();
 
 	sema_up(&current->fork_sema);
 	/* Finally, switch to the newly created process. */
@@ -293,8 +299,8 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// for (int i = 2; i < FD_MAX; i++) close_file(i);
-	// palloc_free_page(curr->fdt);
+	for (int i = 2; i < FD_MAX; i++) close_file(i);
+	palloc_free_page(curr->fdt);
 	process_cleanup ();
 
 	sema_up(&curr->wait_sema);

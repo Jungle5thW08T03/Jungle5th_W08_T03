@@ -225,7 +225,7 @@ tid_t thread_create(const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-
+	t->fdt = palloc_get_page(PAL_ZERO);
 	/* NOTE: [Improve] 모든 쓰레드 생성 시 all_list에 추가 */
 	// list_push_back(&all_list, &t->all_elem);
 

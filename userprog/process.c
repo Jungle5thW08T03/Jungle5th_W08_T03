@@ -274,10 +274,14 @@ process_wait (tid_t child_tid) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	
-	int a = 0;
-	while (a < 1000000000) a++;
+	struct thread *child = get_t_from_tid(child_tid);
+	if (child == NULL) return -1;
+
+	sema_down(&child->wait_sema);
+	list_remove(&child->child_list_elem);
+	sema_up(&child->exit_sema);
 	
-	return -1;
+	return child->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -288,7 +292,13 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+
+	// for (int i = 2; i < FD_MAX; i++) close_file(i);
+	// palloc_free_page(curr->fdt);
 	process_cleanup ();
+
+	sema_up(&curr->wait_sema);
+	sema_down(&curr->exit_sema);
 }
 
 /* Free the current process's resources. */
@@ -722,4 +732,37 @@ static struct thread *get_t_from_tid(tid_t tid) {
 		if (t->tid == tid) return t;
 	}
 	return NULL;
+}
+
+
+// fd 인덱스 부여
+int set_fd(struct file *file)
+{
+	struct thread *cur = thread_current();
+	struct file **fdt = cur->fdt;
+	int fd = 2;
+	while (fdt[fd]) 
+	{	
+		if (fd > FD_MAX) return -1;
+		fd += 1;
+	}
+
+	fdt[fd] = file;
+	return fd;
+}
+
+struct file *get_file(int fd)
+{
+	if (fd < 2 || fd > FD_MAX) return NULL;
+	struct file *file = NULL;
+	struct thread *cur = thread_current();
+	file = cur->fdt[fd];
+	return file;
+}
+
+void close_file(int fd)
+{
+	if (fd < 2 || fd > FD_MAX) return NULL;
+	struct thread *cur = thread_current();
+	cur->fdt[fd] = NULL;
 }

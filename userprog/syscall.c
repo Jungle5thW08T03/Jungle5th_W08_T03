@@ -10,6 +10,7 @@
 #include "userprog/process.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -26,10 +27,6 @@ off_t write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);\
 void close (int fd);
-
-int set_fd(struct file *file);
-struct file *get_file(int fd);
-void close_file(int fd);
 
 /* System call.
  *
@@ -156,7 +153,6 @@ void exit(status)
 	cur->exit_status = status;
 	printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 	thread_exit();
-	return 0;
 }
 
 tid_t fork (const char *thread_name, struct intr_frame *f)
@@ -167,8 +163,15 @@ tid_t fork (const char *thread_name, struct intr_frame *f)
 tid_t exec (const char *cmd_line)
 {
 	check_address(cmd_line);
-	process_exec(cmd_line);
-	
+
+	char *line_cpy = palloc_get_page(0);
+	if (line_cpy == NULL) exit(-1);
+
+	strlcpy(line_cpy, cmd_line, PGSIZE);
+	int succ = process_exec(line_cpy);
+	if (succ == -1) exit(-1);
+
+	return succ;
 }
 
 bool create (const char *file, uint64_t initial_size)
@@ -193,19 +196,18 @@ bool remove (const char *file)
 int open (const char *file)
 {
 	check_address(file);
-	lock_acquire(&filesys_lock);
 	struct file *f_open = NULL;
+	lock_acquire(&filesys_lock);
+
 	f_open = filesys_open(file);
 	if (f_open ==NULL) {
-		lock_release(&filesys_lock);
 		return -1;
 	}
 	int fd = set_fd(f_open);
-	if (fd == -1) {
-		file_close(f_open);
-	}
-	// printf("open in fd %d\n", fd);
+	if (fd == -1) file_close(f_open);
 	lock_release(&filesys_lock);
+
+	// printf("open in fd %d\n", fd);
 	return fd;
 }
 
@@ -280,35 +282,3 @@ void close (int fd)
 	close_file(fd);
 }
 
-
-// fd 인덱스 부여
-int set_fd(struct file *file)
-{
-	struct thread *cur = thread_current();
-	struct file **fdt = cur->fdt;
-	int fd = 2;
-	while (fdt[fd]) 
-	{	
-		if (fd > FD_MAX) return -1;
-		fd += 1;
-	}
-
-	fdt[fd] = file;
-	return fd;
-}
-
-struct file *get_file(int fd)
-{
-	if (fd < 2 || fd > FD_MAX) return NULL;
-	struct file *file = NULL;
-	struct thread *cur = thread_current();
-	file = cur->fdt[fd];
-	return file;
-}
-
-void close_file(int fd)
-{
-	if (fd < 2 || fd > FD_MAX) return NULL;
-	struct thread *cur = thread_current();
-	cur->fdt[fd] = NULL;
-}

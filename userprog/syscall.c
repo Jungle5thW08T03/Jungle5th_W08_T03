@@ -23,8 +23,9 @@ int open (const char *file);
 int filesize (int fd);
 off_t read (int fd, void *buffer, unsigned size);
 off_t write (int fd, const void *buffer, unsigned size);
-
-
+void seek (int fd, unsigned position);
+unsigned tell (int fd);\
+void close (int fd);
 
 int set_fd(struct file *file);
 struct file *get_file(int fd);
@@ -117,6 +118,14 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		// printf("size is %d", f->R.rdx);
 		break;
 
+	case SYS_SEEK:
+		seek (f->R.rdi, f->R.rsi);
+		break;
+
+	case SYS_CLOSE:
+		close (f->R.rdi);
+		break;
+
 	default:
 		break;
 	}
@@ -166,7 +175,10 @@ bool create (const char *file, uint64_t initial_size)
 {
 	int valid = check_address(file);
 	// printf("valid address %d\n", valid);
-	return filesys_create(file, initial_size);
+	lock_acquire(&filesys_lock);
+	bool succ = filesys_create(file, initial_size);
+	lock_release(&filesys_lock);
+	return succ;
 }
 
 bool remove (const char *file)
@@ -192,7 +204,7 @@ int open (const char *file)
 	if (fd == -1) {
 		file_close(f_open);
 	}
-
+	// printf("open in fd %d\n", fd);
 	lock_release(&filesys_lock);
 	return fd;
 }
@@ -246,6 +258,28 @@ off_t write (int fd, const void *buffer, unsigned size)
 	return writtenbytes;
 }
 
+void seek (int fd, unsigned position)
+{
+	struct file *file = get_file(fd);
+	if (file == NULL) return;
+	file_seek(file, position);
+}
+
+unsigned tell (int fd)
+{
+	struct file *file = get_file(fd);
+	if (file == NULL) return;
+	return file_tell(file);
+}
+
+void close (int fd)
+{
+	struct file *file = get_file(fd);
+	if (file == NULL) return;
+	file_close(file);
+	close_file(fd);
+}
+
 
 // fd 인덱스 부여
 int set_fd(struct file *file)
@@ -253,11 +287,12 @@ int set_fd(struct file *file)
 	struct thread *cur = thread_current();
 	struct file **fdt = cur->fdt;
 	int fd = 2;
-	while (fdt[fd] != NULL) 
-	{
-		if (fd == FD_MAX) return -1;
+	while (fdt[fd]) 
+	{	
+		if (fd > FD_MAX) return -1;
 		fd += 1;
 	}
+
 	fdt[fd] = file;
 	return fd;
 }

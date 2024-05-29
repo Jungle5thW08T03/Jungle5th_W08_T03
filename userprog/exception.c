@@ -150,6 +150,7 @@ page_fault (struct intr_frame *f) {
 	/* Count page faults. */
 	page_fault_cnt++;
 	if (not_present) {
+		printf("PFPFPFPFPFPFPFPFPPFP\n");
 		exit(-1);
 	}
 	/* If the fault is true fault, show info and exit. */

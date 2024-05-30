@@ -145,6 +145,7 @@ duplicate_pte(uint64_t *pte, void *va, void *aux)
 	if (!pml4_set_page(current->pml4, va, newpage, writable))
 	{
 		/* 6. TODO: if fail to insert page, do error handling. */
+		palloc_free_page(newpage);
 		printf("-------------------in duplicate_pte4\n");
 		return false;
 	}
@@ -171,7 +172,8 @@ __do_fork(void *aux)
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
-	if (current->pml4 == NULL){
+	if (current->pml4 == NULL)
+	{
 		printf("------------------1\n");
 		goto error;
 	}
@@ -182,7 +184,8 @@ __do_fork(void *aux)
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
 		goto error;
 #else
-	if (!pml4_for_each(parent->pml4, duplicate_pte, parent)){
+	if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
+	{
 		printf("------------------2\n");
 		goto error;
 	}
@@ -220,6 +223,7 @@ __do_fork(void *aux)
 	if (succ)
 		do_iret(&if_);
 error:
+	succ = false;
 	sema_up(&current->fork_sema);
 	printf("--------------------------------in__do_fork TID_ERROR\n");
 	exit(TID_ERROR);
